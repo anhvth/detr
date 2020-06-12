@@ -4,21 +4,66 @@ COCO dataset which returns image_id for evaluation.
 
 Mostly copy-paste from https://github.com/pytorch/vision/blob/13b35ff/references/detection/coco_utils.py
 """
+import os
 from pathlib import Path
 
+import numpy as np
 import torch
 import torch.utils.data
 import torchvision
+from mmcv import Config
+from PIL import Image
 from pycocotools import mask as coco_mask
 
 import datasets.transforms as T
+from mmdet.datasets import build_dataset
+from utils import debug
+
+
+class VOCDetection(torch.utils.data.Dataset):
+    def __init__(self, transforms, cfg_path='./F6_config.py'):
+        cfg = Config.fromfile(cfg_path)
+        self.dataset = build_dataset(cfg.data.train)
+        self._transforms = transforms
+        self.prepare = ConvertCocoPolysToMask(False)
+        x, y = self.__getitem__(0)
+
+    def __len__(self):
+        return len(self.dataset)
+
+    def __getitem__(self, idx):
+        item = self.dataset.__getitem__(idx)
+        img = Image.fromarray(item['img'])
+        areas = []
+        for x1, y1, x2, y2 in item['gt_bboxes']:
+            h = y2 - y1
+            w = x2 - x1
+            areas.append(h * w)
+        target = dict(
+            boxes=torch.from_numpy(item['gt_bboxes']),
+            labels=torch.from_numpy(item['gt_labels']),
+            image_id=idx,
+            area=torch.from_numpy(np.array(areas)),
+        )
+        target['iscrowd'] = torch.zeros_like(target['area'])
+
+
+        # img, target = self.prepare(img, target)
+        if self._transforms is not None:
+            img, target = self._transforms(img, target)
+
+        return img, target
 
 
 class CocoDetection(torchvision.datasets.CocoDetection):
     def __init__(self, img_folder, ann_file, transforms, return_masks):
+
         super(CocoDetection, self).__init__(img_folder, ann_file)
+
         self._transforms = transforms
         self.prepare = ConvertCocoPolysToMask(return_masks)
+        img, target = self.__getitem__(0)
+        import pdb; pdb.set_trace()
 
     def __getitem__(self, idx):
         img, target = super(CocoDetection, self).__getitem__(idx)
@@ -27,8 +72,31 @@ class CocoDetection(torchvision.datasets.CocoDetection):
         img, target = self.prepare(img, target)
         if self._transforms is not None:
             img, target = self._transforms(img, target)
-        import ipdb; ipdb.set_trace()
+        # lines = self.get_pairs(target)
+        # target.update(lines)
+
+        # path = self.coco.loadImgs(self.ids[idx])[0]['file_name']
+        # target['filename'] = os.path.join(self.root, path)
         return img, target
+
+    def get_pairs(self, target):
+        boxes, labels = target['boxes'], target['labels']
+        if len(labels) > 0:
+            labels_h = torch.stack([labels] * len(labels), 0)
+            labels_w = torch.stack([labels] * len(labels), 1)
+
+            xs, ys = torch.where(labels_h == labels_w)
+            ids = xs != ys
+            xs = xs[ids]  # .cpu().numpy().tolist()
+            ys = ys[ids]  # .cpu().numpy().tolist()
+
+            pairs = torch.stack([xs, ys], 1)
+        else:
+            pairs = torch.zeros([0, 2], dtype=torch.long)
+        return dict(
+            pairs=pairs
+
+        )
 
 
 def convert_coco_poly_to_mask(segmentations, height, width):
@@ -145,15 +213,23 @@ def make_coco_transforms(image_set):
     raise ValueError(f'unknown {image_set}')
 
 
-def build(image_set, args):
-    root = Path(args.coco_path)
+def build_coco(image_set, args):
+    root = Path('/data/coco')
     assert root.exists(), f'provided COCO path {root} does not exist'
     mode = 'instances'
     PATHS = {
         "train": (root / "images/train2017", root / "annotations" / f'{mode}_train2017.json'),
         "val": (root / "images/val2017", root / "annotations" / f'{mode}_val2017.json'),
     }
+    if debug:
+        print("[DEBUG]  -> PATHS['train'] = PATHS['VAL']")
+        PATHS['train'] = PATHS['val']
 
     img_folder, ann_file = PATHS[image_set]
     dataset = CocoDetection(img_folder, ann_file, transforms=make_coco_transforms(image_set), return_masks=args.masks)
     return dataset
+
+
+def build_voc(image_set, args):
+    transforms = make_coco_transforms(image_set)
+    return VOCDetection(transforms)

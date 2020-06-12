@@ -255,6 +255,7 @@ class Normalize(object):
             boxes = box_xyxy_to_cxcywh(boxes)
             boxes = boxes / torch.tensor([w, h, w, h], dtype=torch.float32)
             target["boxes"] = boxes
+
         return image, target
 
 
@@ -264,6 +265,9 @@ class Compose(object):
 
     def __call__(self, image, target):
         for t in self.transforms:
+            # if "Norm" in str(t):
+            #     print(t, target['boxes'])
+            #     import pdb; pdb.set_trace()
             image, target = t(image, target)
         return image, target
 
