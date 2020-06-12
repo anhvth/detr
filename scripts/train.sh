@@ -1,0 +1,1 @@
+python main.py --coco_path /data/coco
