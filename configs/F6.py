@@ -28,64 +28,9 @@ log_config = dict(
 		dict(type='TextLoggerHook'),
 	]
 )
-num_used_classes = 15
+num_used_classes = None
 ret_logits = True
 
-# model settings
-conv_cfg = dict(type='ConvWS')
-norm_cfg = dict(type='GN', num_groups=32, requires_grad=True)
-
-model = dict(
-	type='RetinaNet',
-	pretrained='torchvision://resnet50',
-	backbone=dict(
-		type='ResNet',
-		depth=50,
-		num_stages=4,
-		out_indices=(1, 2, 3),
-		frozen_stages=1,
-		norm_eval=True,
-		norm_cfg=dict(type='BN', requires_grad=True),
-		style='pytorch'),
-	neck=dict(
-		type='FPN',
-		in_channels=[512, 1024, 2048],
-		out_channels=256,
-		start_level=0,
-		conv_cfg=conv_cfg,
-		norm_cfg=norm_cfg,
-		add_extra_convs=True,
-		extra_convs_on_inputs=False,
-		num_outs=5),
-	bbox_head=dict(
-		type='ATSSHead',
-		num_classes=21,
-		in_channels=256,
-		stacked_convs=4,
-		feat_channels=256,
-		octave_base_scale=8,
-		scales_per_octave=1,
-		anchor_ratios=[1.0],
-		anchor_strides=[8, 16, 32, 64, 128],
-		target_means=[.0, .0, .0, .0],
-		target_stds=[0.1, 0.1, 0.2, 0.2],
-		loss_cls=dict(type='FocalLoss', use_sigmoid=True, alpha=0.25, loss_weight=1.0),
-		loss_bbox=dict(type='GIoULoss', loss_weight=2.0),
-		loss_centerness=dict(type='CrossEntropyLoss', use_sigmoid=True, loss_weight=1.0)))
-# training and testing settings
-train_cfg = dict(
-	assigner=dict(type='ATSSAssigner', topk=9),
-	allowed_border=-1,
-	pos_weight=-1,
-	debug=False)
-test_cfg = dict(
-	nms_pre=1000,
-	min_bbox_size=0,
-	score_thr=0.05,
-	nms=dict(type='nms', iou_thr=0.5),
-	max_per_img=100,
-	ret_logits=ret_logits,
-)
 # dataset settings
 dataset_type = 'VOCDataset'
 img_norm_cfg = dict(

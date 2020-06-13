@@ -56,7 +56,7 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
             for k, v in loss_dict_reduced.items():
                 v = v.item()
                 writer.add_scalar(k, v, global_step)
-                print(k, v, global_step)
+                # print(k, v, global_step)
 
         optimizer.zero_grad()
         losses.backward()

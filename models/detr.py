@@ -39,7 +39,6 @@ class DETR(nn.Module):
         self.transformer = transformer
         hidden_dim = transformer.d_model
         self.class_embed = nn.Linear(hidden_dim, cfg.num_classes + 1) # softmax need one more
-        # self.class_embed = nn.Linear(hidden_dim, 1 + 1)
         self.bbox_embed = MLP(hidden_dim, hidden_dim, 4, 3)
         self.ang_loss = ang_loss
         

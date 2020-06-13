@@ -44,6 +44,7 @@ class VOCDetection(torch.utils.data.Dataset):
             labels=torch.from_numpy(item['gt_labels']),
             image_id=idx,
             area=torch.from_numpy(np.array(areas)),
+            filename=item['img_metas'].data['filename'],
         )
         target['iscrowd'] = torch.zeros_like(target['area'])
 
