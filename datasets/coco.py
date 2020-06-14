@@ -7,10 +7,43 @@ Mostly copy-paste from https://github.com/pytorch/vision/blob/13b35ff/references
 from pathlib import Path
 
 import torch
-import torch.utils.data
+from torch.utils.data import Dataset, DataLoader
 import torchvision
 from pycocotools import mask as coco_mask
 import datasets.transforms as T
+from mmdet.datasets import build_dataset
+import mmcv
+from mmcv.parallel import DataContainer as DC
+
+class MMDetectionDataset(torch.utils.data.Dataset):
+    def __init__(self, cfg):
+        self.dataset = build_dataset(cfg)
+        # img, target = self.__getitem__(0)
+
+    def __len__(self):
+        return len(self.dataset)
+
+    def __getitem__(self, idx):
+        item = self.dataset.__getitem__(idx)
+        for k, v in item.items():
+            if isinstance(v, DC):
+                item[k] = v.data
+
+        img = item['img']
+        h,w,_ = item['img_metas']['pad_shape']
+        scale = torch.Tensor([w,h,w,h])
+        target = dict(
+            boxes=item['gt_bboxes'] / scale,
+            labels=item['gt_labels'],
+            orig_size=item['img_metas']['ori_shape'],
+            size=(h,w),
+            iscrowd=False,
+        )
+        
+
+
+        target['img_metas'] = item['img_metas']
+        return img, target
 
 
 class CocoDetection(torchvision.datasets.CocoDetection):
@@ -143,15 +176,27 @@ def make_coco_transforms(image_set):
     raise ValueError(f'unknown {image_set}')
 
 
-def build(image_set, args):
-    root = Path(args.coco_path)
-    assert root.exists(), f'provided COCO path {root} does not exist'
-    mode = 'instances'
-    PATHS = {
-        "train": (root / "images/train2017", root / "annotations" / f'{mode}_train2017.json'),
-        "val": (root / "images/val2017", root / "annotations" / f'{mode}_val2017.json'),
-    }
+# def build(image_set, args):
+#     root = Path(args.coco_path)
+#     assert root.exists(), f'provided COCO path {root} does not exist'
+#     mode = 'instances'
+#     PATHS = {
+#         # "train": (root / "images/train2017", root / "annotations" / f'{mode}_train2017.json'),
+#         "train": (root / "images/val2017", root / "annotations" / f'{mode}_val2017.json'),
+#         "val": (root / "images/val2017", root / "annotations" / f'{mode}_val2017.json'),
+#     }
 
-    img_folder, ann_file = PATHS[image_set]
-    dataset = CocoDetection(img_folder, ann_file, transforms=make_coco_transforms(image_set), return_masks=args.masks)
+#     img_folder, ann_file = PATHS[image_set]
+#     dataset = CocoDetection(img_folder, ann_file, transforms=make_coco_transforms(image_set), return_masks=args.masks)
+#     return dataset
+
+
+def build(image_set, args):
+    cfg = mmcv.Config.fromfile('configs/datasets/coco_detection.py')
+    if image_set == 'train':
+        dataset = MMDetectionDataset(cfg.data.val)
+    elif image_set == 'val':
+        dataset = MMDetectionDataset(cfg.data.val)
+    else:
+        raise NotImplemented
     return dataset
