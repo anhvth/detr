@@ -18,8 +18,6 @@ from mmcv.parallel import DataContainer as DC
 class MMDetectionDataset(torch.utils.data.Dataset):
     def __init__(self, cfg):
         self.dataset = build_dataset(cfg)
-        # img, target = self.__getitem__(0)
-
     def __len__(self):
         return len(self.dataset)
 
@@ -39,9 +37,6 @@ class MMDetectionDataset(torch.utils.data.Dataset):
             size=(h,w),
             iscrowd=False,
         )
-        
-
-
         target['img_metas'] = item['img_metas']
         return img, target
 
@@ -174,21 +169,6 @@ def make_coco_transforms(image_set):
         ])
 
     raise ValueError(f'unknown {image_set}')
-
-
-# def build(image_set, args):
-#     root = Path(args.coco_path)
-#     assert root.exists(), f'provided COCO path {root} does not exist'
-#     mode = 'instances'
-#     PATHS = {
-#         # "train": (root / "images/train2017", root / "annotations" / f'{mode}_train2017.json'),
-#         "train": (root / "images/val2017", root / "annotations" / f'{mode}_val2017.json'),
-#         "val": (root / "images/val2017", root / "annotations" / f'{mode}_val2017.json'),
-#     }
-
-#     img_folder, ann_file = PATHS[image_set]
-#     dataset = CocoDetection(img_folder, ann_file, transforms=make_coco_transforms(image_set), return_masks=args.masks)
-#     return dataset
 
 
 def build(image_set, args):

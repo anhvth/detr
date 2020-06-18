@@ -1,6 +1,6 @@
 python -m torch.distributed.launch \
     --nproc_per_node=2 \
-    --use_env main.py \
+    --use_env train.py \
     --coco_path /data/coco  \
     --resume https://dl.fbaipublicfiles.com/detr/detr-r50-e632da11.pth \
     --output_dir /checkpoints/haianh/detr/mmcoco/ \
