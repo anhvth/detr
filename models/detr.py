@@ -16,6 +16,8 @@ from .matcher import build_matcher
 from .segmentation import (DETRsegm, PostProcessPanoptic, PostProcessSegm,
                            dice_loss, sigmoid_focal_loss)
 from .transformer import build_transformer
+from mmcv.parallel import DataContainer as DC
+
 
 
 class DETR(nn.Module):
@@ -81,6 +83,14 @@ class DETR(nn.Module):
         # as a dict having both a Tensor and a list.
         return [{'pred_logits': a, 'pred_boxes': b}
                 for a, b in zip(outputs_class[:-1], outputs_coord[:-1])]
+
+
+class MMDETR(DETR):
+    
+    def forward(self, samples: DC):
+        samples = [_ for _ in samples.data]
+        return super(MMDETR, self).forward(samples)
+        
 
 
 class SetCriterion(nn.Module):
@@ -313,14 +323,18 @@ def build(args):
     backbone = build_backbone(args)
 
     transformer = build_transformer(args)
-
-    model = DETR(
+    if args.is_mm_model:
+        model_class = MMDETR
+    else:
+        model_class = DETR
+    model = model_class(
         backbone,
         transformer,
         num_classes=num_classes,
         num_queries=args.num_queries,
         aux_loss=args.aux_loss,
     )
+
     if args.masks:
         model = DETRsegm(model, freeze_detr=(args.frozen_weights is not None))
     matcher = build_matcher(args)

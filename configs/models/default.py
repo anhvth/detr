@@ -40,3 +40,5 @@ eval= False
 num_workers= 2
 world_size= 1
 # dist_url= 'env=/
+
+is_mm_model = True
