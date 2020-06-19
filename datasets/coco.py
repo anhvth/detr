@@ -172,7 +172,9 @@ def make_coco_transforms(image_set):
 
 
 def build(image_set, args):
+   
     cfg = mmcv.Config.fromfile('configs/datasets/coco_detection.py')
+    import pdb; pdb.set_trace()
     if image_set == 'train':
         dataset = MMDetectionDataset(cfg.data.val)
     elif image_set == 'val':

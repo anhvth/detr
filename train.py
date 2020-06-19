@@ -1,5 +1,6 @@
 # Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved
-import argparse
+import mmcv
+# import argparse
 import datetime
 import json
 import random
@@ -241,8 +242,8 @@ def main(args):
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser('DETR training and evaluation script', parents=[get_args_parser()])
-    args = parser.parse_args()
+    # parser = argparse.ArgumentParser('DETR training and evaluation script', parents=[get_args_parser()])
+    args = mmcv.Config.fromfile('./configs/models/default.py')
     if args.output_dir:
         Path(args.output_dir).mkdir(parents=True, exist_ok=True)
     main(args)

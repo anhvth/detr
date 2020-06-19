@@ -7,25 +7,29 @@ import mmcv
 import torch
 import torch.utils.data
 from torchvision.transforms import transforms as T
+# from TrackTransMOT.src import _init_paths
+import os.path as osp
+import sys
+
+def add_path(path):
+    if path not in sys.path:
+        sys.path.insert(0, path)
+
+this_dir = osp.dirname('./TrackTransMOT/src/_init_paths.py')
+
+# Add lib to PYTHONPATH
+lib_path = osp.join(this_dir, 'lib')
+add_path(lib_path)
+
+
+
 
 from datasets.dataset_factory import get_dataset
 from logger import Logger
 from opts import opts
-# # track_trans_mot_dir = osp.dirname(__file__)
-# track_trans_mot_dir = 'TrackTransMOT/src'
-# # Add lib to PYTHONPATH
-# lib_path = osp.join(track_trans_mot_dir, 'lib')
-# add_path(lib_path)
-from TrackTransMOT.src import _init_paths
 from trains.train_factory import train_factory
 
-# def add_path(path):
-#     if path not in sys.path:
-#         sys.path.insert(0, path)
-
-
-
-opt = mmcv.Config.fromfile(f"{track_trans_mot_dir}/lib/cfg/default_opts.py")
+opt = mmcv.Config.fromfile('TrackTransMOT/src/lib/cfg/default_opts.py')
 
 Dataset = get_dataset(opt.dataset, opt.task)
 print("Dataset:", Dataset)
