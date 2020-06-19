@@ -1,0 +1,51 @@
+import json
+import os
+import os.path as osp
+import sys
+
+import mmcv
+import torch
+import torch.utils.data
+from torchvision.transforms import transforms as T
+
+from datasets.dataset_factory import get_dataset
+from logger import Logger
+from opts import opts
+# # track_trans_mot_dir = osp.dirname(__file__)
+# track_trans_mot_dir = 'TrackTransMOT/src'
+# # Add lib to PYTHONPATH
+# lib_path = osp.join(track_trans_mot_dir, 'lib')
+# add_path(lib_path)
+from TrackTransMOT.src import _init_paths
+from trains.train_factory import train_factory
+
+# def add_path(path):
+#     if path not in sys.path:
+#         sys.path.insert(0, path)
+
+
+
+opt = mmcv.Config.fromfile(f"{track_trans_mot_dir}/lib/cfg/default_opts.py")
+
+Dataset = get_dataset(opt.dataset, opt.task)
+print("Dataset:", Dataset)
+if ".json" in opt.data_cfg:
+    f = open(opt.data_cfg)
+    data_config = json.load(f)
+    trainset_paths = data_config['train']
+    dataset_root = data_config['root']
+    f.close()
+elif ".py" in opt.data_cfg:
+    data_config = mmcv.Config.fromfile(opt.data_cfg).data
+    trainset_paths = data_config["train"]
+    dataset_root = data_config["root"]
+else:
+    raise NotImplemented
+
+transforms = T.Compose([T.ToTensor()])
+
+dataset = Dataset(opt,
+                  dataset_root,
+                  trainset_paths, (1088, 608),
+                  augment=True,
+                  transforms=transforms)

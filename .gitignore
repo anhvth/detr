@@ -18,3 +18,5 @@ not_tracked_dir/
 runs
 mmdetection
 data
+pyson
+TrackTransMOT
