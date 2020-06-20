@@ -3,6 +3,8 @@
 import mmcv
 # import argparse
 from mmcv.parallel import MMDataParallel, MMDistributedDataParallel
+from torch.utils.tensorboard import SummaryWriter
+import os
 import datetime
 import json
 import random
@@ -276,12 +278,15 @@ def main(args):
     print("Start training")
     start_time = time.time()
     model = MMDataParallel(model)
+    writer = SummaryWriter(args.tb_logdir)
+    os.makedirs(args.tb_logdir, exist_ok=True)
+    print(f'Tensorboard: tensorboard --logdir {args.tb_logdir}')
     for epoch in range(args.start_epoch, args.epochs):
         if args.distributed:
             sampler_train.set_epoch(epoch)
         train_stats = train_one_epoch(model, criterion, data_loader_train,
                                       optimizer, device, epoch,
-                                      args.clip_max_norm)
+                                      args.clip_max_norm, writer=writer)
         lr_scheduler.step()
         if args.output_dir:
             checkpoint_paths = [output_dir / 'checkpoint.pth']

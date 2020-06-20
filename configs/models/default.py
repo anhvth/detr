@@ -31,7 +31,7 @@ dataset_file= 'ytvos'
 coco_path= '/data/coco'
 coco_panoptic_path= None
 remove_difficult= False
-output_dir= '/checkpoints/haianh/detr/mmcoco/'
+output_dir= '/checkpoints/haianh/detr/ytvos/'
 device= 'cuda'
 seed= 42
 resume= 'https=//dl.fbaipublicfiles.com/detr/detr-r50-e632da11.pth'
@@ -42,3 +42,4 @@ world_size= 1
 # dist_url= 'env=/
 num_classes = 41
 is_mm_model = True
+tb_logdir = '/checkpoints/haianh/detr/ytvos/tensorboard'
