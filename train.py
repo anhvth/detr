@@ -1,6 +1,8 @@
+
 # Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved
 import mmcv
 # import argparse
+from mmcv.parallel import MMDataParallel, MMDistributedDataParallel
 import datetime
 import json
 import random
@@ -16,7 +18,7 @@ import util.misc as utils
 from datasets import build_dataset, get_coco_api_from_dataset
 from engine import evaluate, train_one_epoch
 from models import build_model
-
+from pyson.utils import memoize
 
 def get_args_parser():
     parser = argparse.ArgumentParser('Set transformer detector',
@@ -31,7 +33,6 @@ def get_args_parser():
                         default=0.1,
                         type=float,
                         help='gradient clipping max norm')
-
     # Model parameters
     parser.add_argument(
         '--frozen_weights',
@@ -212,24 +213,21 @@ def main(args):
                                   weight_decay=args.weight_decay)
     lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, args.lr_drop)
 
-    dataset_train = build_dataset(image_set='train', args=args)
+
+    
+    
+
+
+
     dataset_val = build_dataset(image_set='val', args=args)
 
     if args.distributed:
-        sampler_train = DistributedSampler(dataset_train)
         sampler_val = DistributedSampler(dataset_val, shuffle=False)
     else:
-        sampler_train = torch.utils.data.RandomSampler(dataset_train)
         sampler_val = torch.utils.data.SequentialSampler(dataset_val)
 
-    batch_sampler_train = torch.utils.data.BatchSampler(sampler_train,
-                                                        args.batch_size,
-                                                        drop_last=True)
 
-    data_loader_train = DataLoader(dataset_train,
-                                   batch_sampler=batch_sampler_train,
-                                   collate_fn=utils.collate_fn,
-                                   num_workers=args.num_workers)
+    data_loader_train = build_dataset(image_set='train', args=args)
     data_loader_val = DataLoader(dataset_val,
                                  args.batch_size,
                                  sampler=sampler_val,
@@ -256,10 +254,14 @@ def main(args):
                                                             check_hash=True)
         else:
             checkpoint = torch.load(args.resume, map_location='cpu')
-        model_without_ddp.load_state_dict(checkpoint['model'])
+        from mmcv.runner import load_state_dict
+        # model_without_ddp.load_state_dict(checkpoint['model'], strict=False)
+        
+        load_state_dict(model_without_ddp, checkpoint['model'])
+
         if not args.eval and 'optimizer' in checkpoint and 'lr_scheduler' in checkpoint and 'epoch' in checkpoint:
             optimizer.load_state_dict(checkpoint['optimizer'])
-            lr_scheduler.load_state_dict(checkpoint['lr_scheduler'])
+            load_state_dict(lr_scheduler, checkpoint['lr_scheduler'])
             args.start_epoch = checkpoint['epoch'] + 1
 
     if args.eval:
@@ -273,6 +275,7 @@ def main(args):
 
     print("Start training")
     start_time = time.time()
+    model = MMDataParallel(model)
     for epoch in range(args.start_epoch, args.epochs):
         if args.distributed:
             sampler_train.set_epoch(epoch)

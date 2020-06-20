@@ -23,6 +23,9 @@ if float(torchvision.__version__[:3]) < 0.7:
     from torchvision.ops.misc import _output_size
 
 
+def get_dc_data(dc):
+    return dc.data[0]
+
 class SmoothedValue(object):
     """Track a series of values and provide access to smoothed values over a
     window or the global series average.

@@ -27,7 +27,7 @@ dice_loss_coef= 1
 bbox_loss_coef= 5
 giou_loss_coef= 2
 eos_coef= 0.1
-dataset_file= 'coco'
+dataset_file= 'ytvos'
 coco_path= '/data/coco'
 coco_panoptic_path= None
 remove_difficult= False
@@ -40,5 +40,5 @@ eval= False
 num_workers= 2
 world_size= 1
 # dist_url= 'env=/
-
+num_classes = 41
 is_mm_model = True

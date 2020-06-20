@@ -11,9 +11,7 @@ from pycocotools.ytvos import YTVOS
 from mmcv.parallel import DataContainer as DC
 from .utils import to_tensor, random_scale
 from mmdet.datasets import DATASETS
-
-# def DC(x):
-#     return x
+import torch
 
 @DATASETS.register_module()
 class YTVOSDataset(CustomDataset):
@@ -212,7 +210,7 @@ class YTVOSDataset(CustomDataset):
         ref_img = mmcv.imread(
             osp.join(self.img_prefix, vid_info['filenames'][ref_frame_id]))
         # load proposals if necessary
-        if self.proposals is not None:
+        if self.proposals is not None: # default is None
             proposals = self.proposals[idx][:self.num_max_proposals]
             # TODO: Handle empty proposals properly. Currently images with
             # no proposals are just ignored, but they can be used for
@@ -233,6 +231,7 @@ class YTVOSDataset(CustomDataset):
         ref_ann = self.get_ann_info(vid, ref_frame_id)
         gt_bboxes = ann['bboxes']
         gt_labels = ann['labels']
+        ref_labels = ref_ann['labels']
         ref_bboxes = ref_ann['bboxes']
         # obj ids attribute does not exist in current annotation
         # need to add it
@@ -241,6 +240,10 @@ class YTVOSDataset(CustomDataset):
         # compute matching of reference frame with current frame
         # 0 denote there is no matching
         gt_pids = [ref_ids.index(i) + 1 if i in ref_ids else 0 for i in gt_ids]
+        # gt_pids = dict(
+        #     gt_ids=gt_ids,
+        #     ref_ids=ref_ids,
+        # )
         if self.with_crowd:
             gt_bboxes_ignore = ann['bboxes_ignore']
 
@@ -291,13 +294,15 @@ class YTVOSDataset(CustomDataset):
                     ref_img=DC(to_tensor(ref_img), stack=True),
                     img_meta=DC(img_meta, cpu_only=True),
                     gt_bboxes=DC(to_tensor(gt_bboxes)),
-                    ref_bboxes=DC(to_tensor(ref_bboxes)))
+                    ref_bboxes=DC(to_tensor(ref_bboxes)),
+                    ref_labels=DC(to_tensor(ref_labels))
+                )
         if self.proposals is not None:
             data['proposals'] = DC(to_tensor(proposals))
         if self.with_label:
             data['gt_labels'] = DC(to_tensor(gt_labels))
         if self.with_track:
-            data['gt_pids'] = DC(to_tensor(gt_pids))
+            data['gt_pids'] = DC(gt_pids, cpu_only=True)
         if self.with_crowd:
             data['gt_bboxes_ignore'] = DC(to_tensor(gt_bboxes_ignore))
         if self.with_mask:
@@ -433,3 +438,67 @@ class YTVOSDataset(CustomDataset):
             ann['mask_polys'] = gt_mask_polys
             ann['poly_lens'] = gt_poly_lens
         return ann
+
+
+
+
+
+class DETRWraper_YTVOSDataset(torch.utils.data.Dataset):
+    def __init__(self, dataset):
+        if isinstance(dataset, torch.utils.data.Dataset):
+            self.dataset = dataset
+        else:
+            self.dataset = build_dataset(dataset)
+
+        self.flag = self.dataset.flag
+    def __len__(self):
+        return len(self.dataset)
+
+    def __getitem__(self, idx):
+        item = self.dataset.__getitem__(idx)
+        meta = 'img_meta'
+        h,w,_ = item[meta].data['pad_shape']
+        scale = torch.Tensor([w,h,w,h])
+
+        target = dict(
+            boxes=item['gt_bboxes'].data / scale,
+            labels=item['gt_labels'].data,
+            orig_size=item[meta].data['ori_shape'],
+            size=(h,w),
+            iscrowd=False,
+        )
+        
+        ref_target = dict(
+            boxes=item['ref_bboxes'].data / scale,
+            labels=item['ref_labels'].data,
+            orig_size=item[meta].data['ori_shape'],
+            size=(h,w),
+            iscrowd=False,
+        )
+        
+        target[meta] = item[meta]
+        item['target'] = DC(target)
+        item['ref_target'] = DC(ref_target)
+        return item
+
+
+def build():
+    from mmdet.datasets import build_dataset, build_dataloader
+    @memoize
+    def get_train_dataset():
+        cfg_data = mmcv.Config.fromfile('./configs/datasets/ytvos_tracking.py')
+        dataset_train = build_dataset(cfg_data.data['train'])
+        return dataset_train
+
+    ds = get_train_dataset()
+    cfg_data = mmcv.Config.fromfile('./configs/datasets/ytvos_tracking.py')
+    dataset_train = DETRWraper_YTVOSDataset(ds)
+    data_loader_train = build_dataloader(
+                    dataset_train,
+                    cfg_data.data['imgs_per_gpu'],
+                    cfg_data.data['workers_per_gpu'],
+                    num_gpus=1,
+                    dist=False,
+                    seed=1)
+    print('FInish build dataloader YTVOS')
+    return data_loader_train

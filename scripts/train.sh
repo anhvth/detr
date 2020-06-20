@@ -8,10 +8,5 @@
 #     --lr_drop 10
 
 
-
-python  train.py \
-    --coco_path /data/coco  \
-    --resume https://dl.fbaipublicfiles.com/detr/detr-r50-e632da11.pth \
-    --output_dir /checkpoints/haianh/detr/mmcoco/ \
-    --epochs 20 \
-    --lr_drop 10
+export CUDA_VISIBLE_DEVICES=0
+python train.py

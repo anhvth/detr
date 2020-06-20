@@ -5,7 +5,7 @@ DETR model and criterion classes.
 import torch
 import torch.nn.functional as F
 from torch import nn
-
+import itertools
 from util import box_ops
 from util.misc import (NestedTensor, nested_tensor_from_tensor_list,
                        accuracy, get_world_size, interpolate,
@@ -18,7 +18,7 @@ from .segmentation import (DETRsegm, PostProcessPanoptic, PostProcessSegm,
 from .transformer import build_transformer
 from mmcv.parallel import DataContainer as DC
 
-
+import numpy as np
 
 class DETR(nn.Module):
     """ This is the DETR module that performs object detection """
@@ -38,10 +38,12 @@ class DETR(nn.Module):
         hidden_dim = transformer.d_model
         self.class_embed = nn.Linear(hidden_dim, num_classes + 1)
         self.bbox_embed = MLP(hidden_dim, hidden_dim, 4, 3)
+        self.reident_embed = MLP(hidden_dim, hidden_dim, 256, 3)
         self.query_embed = nn.Embedding(num_queries, hidden_dim)
         self.input_proj = nn.Conv2d(backbone.num_channels, hidden_dim, kernel_size=1)
         self.backbone = backbone
         self.aux_loss = aux_loss
+
         
 
     def forward(self, samples: NestedTensor):
@@ -71,7 +73,10 @@ class DETR(nn.Module):
 
         outputs_class = self.class_embed(hs)
         outputs_coord = self.bbox_embed(hs).sigmoid()
-        out = {'pred_logits': outputs_class[-1], 'pred_boxes': outputs_coord[-1]}
+
+        outputs_ident = self.reident_embed(hs)
+
+        out = {'pred_logits': outputs_class[-1], 'pred_boxes': outputs_coord[-1], 'outputs_ident':outputs_ident}
         if self.aux_loss:
             out['aux_outputs'] = self._set_aux_loss(outputs_class, outputs_coord)
         return out
@@ -114,6 +119,7 @@ class SetCriterion(nn.Module):
         self.weight_dict = weight_dict
         self.eos_coef = eos_coef
         self.losses = losses
+        self.cos_loss = torch.nn.CosineEmbeddingLoss()
         empty_weight = torch.ones(self.num_classes + 1)
         empty_weight[-1] = self.eos_coef
         self.register_buffer('empty_weight', empty_weight)
@@ -138,6 +144,48 @@ class SetCriterion(nn.Module):
             # TODO this should probably be a separate loss, not hacked in this one here
             losses['class_error'] = 100 - accuracy(src_logits[idx], target_classes_o)[0]
         return losses
+
+    def loss_object_matching(self, outputs, cur_indices, ref_outputs, ref_indices, pids) :
+        batch_size = len(cur_indices)
+        cur_inputs_list = []
+        ref_inputs_list = []
+        targets_list = []
+        layer = -1 # last
+        for idx in range(batch_size):
+            i_outputs_embed = outputs['outputs_ident'][layer][idx]
+            i_ref_outputs_embed = ref_outputs['outputs_ident'][layer][idx]
+
+            i_cur_indices = [_.cpu().numpy().tolist() for _ in cur_indices[idx]]
+            cid2index_dict = dict(zip(i_cur_indices[1], i_cur_indices[0]))
+            i_ref_indices = [_.cpu().numpy().tolist() for _ in ref_indices[idx]]
+            pid2index_dict = dict(zip(i_ref_indices[1], i_ref_indices[0]))
+            i_pids = np.array(pids[idx])-1
+            cid2pid_dict = dict(enumerate(i_pids))
+
+            cur_inputs = []
+            ref_inputs = []
+            targets = []
+            for cid, pid in itertools.product(cid2pid_dict.keys(), cid2pid_dict.values()):
+                if cid >= 0 and pid>=0: 
+                    cur_inputs.append(i_outputs_embed[cid2index_dict[cid]])
+                    ref_inputs.append(i_ref_outputs_embed[pid2index_dict[pid]])
+                    if cid2pid_dict[cid] == pid:
+                        targets.append(1)
+                    else:
+                        targets.append(-1)
+            if len(cur_inputs) > 0:
+                cur_inputs_list.append(torch.stack(cur_inputs))
+                ref_inputs_list.append(torch.stack(ref_inputs))
+                targets_list.append(torch.from_numpy(np.array(targets)))
+
+
+        cur_inputs_list = torch.cat(cur_inputs_list)
+        ref_inputs_list = torch.cat(ref_inputs_list)
+        targets_list = torch.cat(targets_list).to(ref_inputs_list.device)
+        loss = self.cos_loss(cur_inputs_list, ref_inputs_list, targets_list)
+        return loss
+
+
 
     @torch.no_grad()
     def loss_cardinality(self, outputs, targets, indices, num_boxes):
@@ -217,6 +265,7 @@ class SetCriterion(nn.Module):
 
     def get_loss(self, loss, outputs, targets, indices, num_boxes, **kwargs):
         loss_map = {
+            # 'object_matching', self.loss_object_matching
             'labels': self.loss_labels,
             'cardinality': self.loss_cardinality,
             'boxes': self.loss_boxes,
@@ -225,7 +274,7 @@ class SetCriterion(nn.Module):
         assert loss in loss_map, f'do you really want to compute {loss} loss?'
         return loss_map[loss](outputs, targets, indices, num_boxes, **kwargs)
 
-    def forward(self, outputs, targets):
+    def forward(self, outputs, targets, **kwargs):
         """ This performs the loss computation.
         Parameters:
              outputs: dict of tensors, see the output specification of the model for the format
@@ -235,8 +284,9 @@ class SetCriterion(nn.Module):
         outputs_without_aux = {k: v for k, v in outputs.items() if k != 'aux_outputs'}
 
         # Retrieve the matching between the outputs of the last layer and the targets
-        indices = self.matcher(outputs_without_aux, targets)
-
+        # import pdb; pdb.set_trace()
+        indices = cur_indices = self.matcher(outputs_without_aux, targets)
+        
         # Compute the average number of target boxes accross all nodes, for normalization purposes
         num_boxes = sum(len(t["labels"]) for t in targets)
         num_boxes = torch.as_tensor([num_boxes], dtype=torch.float, device=next(iter(outputs.values())).device)
@@ -248,6 +298,18 @@ class SetCriterion(nn.Module):
         losses = {}
         for loss in self.losses:
             losses.update(self.get_loss(loss, outputs, targets, indices, num_boxes))
+        
+        # if with matching loss
+        # embed_outputs = outputs['outputs_ident'][layer]
+        # ref_embed_outputs = ref_outputs['ref_outputs_ident'][layer]
+        if False:
+            ref_outputs = kwargs['ref_outputs']
+            pids = kwargs['pids']
+            ref_targets = kwargs['ref_targets']
+
+            ref_outputs_without_aux = {k: v for k, v in ref_outputs.items() if k != 'aux_outputs'}
+            ref_indices = self.matcher(ref_outputs_without_aux, ref_targets)
+            losses['object_matching'] = self.loss_object_matching(outputs, cur_indices, ref_outputs, ref_indices, pids)
 
         # In case of auxiliary losses, we repeat this process with the output of each intermediate layer.
         if 'aux_outputs' in outputs:
@@ -266,6 +328,9 @@ class SetCriterion(nn.Module):
                     losses.update(l_dict)
 
         return losses
+
+
+
 
 
 class PostProcess(nn.Module):
@@ -315,7 +380,6 @@ class MLP(nn.Module):
 
 
 def build(args):
-    num_classes = 20 if args.dataset_file != 'coco' else 91
     if args.dataset_file == "coco_panoptic":
         num_classes = 250
     device = torch.device(args.device)
@@ -330,7 +394,7 @@ def build(args):
     model = model_class(
         backbone,
         transformer,
-        num_classes=num_classes,
+        num_classes=args.num_classes,
         num_queries=args.num_queries,
         aux_loss=args.aux_loss,
     )
@@ -353,7 +417,7 @@ def build(args):
     losses = ['labels', 'boxes', 'cardinality']
     if args.masks:
         losses += ["masks"]
-    criterion = SetCriterion(num_classes, matcher=matcher, weight_dict=weight_dict,
+    criterion = SetCriterion(args.num_classes, matcher=matcher, weight_dict=weight_dict,
                              eos_coef=args.eos_coef, losses=losses)
     criterion.to(device)
     postprocessors = {'bbox': PostProcess()}
