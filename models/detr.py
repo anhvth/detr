@@ -39,6 +39,7 @@ class DETR(nn.Module):
         self.class_embed = nn.Linear(hidden_dim, num_classes + 1)
         self.bbox_embed = MLP(hidden_dim, hidden_dim, 4, 3)
         self.reident_embed = MLP(hidden_dim, hidden_dim, 256, 3)
+
         self.query_embed = nn.Embedding(num_queries, hidden_dim)
         self.input_proj = nn.Conv2d(backbone.num_channels, hidden_dim, kernel_size=1)
         self.backbone = backbone
@@ -75,6 +76,7 @@ class DETR(nn.Module):
         outputs_coord = self.bbox_embed(hs).sigmoid()
 
         outputs_ident = self.reident_embed(hs)
+        import pdb; pdb.set_trace()
 
         out = {'pred_logits': outputs_class[-1], 'pred_boxes': outputs_coord[-1], 'outputs_ident':outputs_ident}
         if self.aux_loss:

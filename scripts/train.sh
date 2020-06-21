@@ -10,7 +10,7 @@
 
 export CUDA_VISIBLE_DEVICES=0,1
 GPUS=2
-# python train.py
+python train.py
 
-python -m torch.distributed.launch --nproc_per_node=$GPUS \
-        --master_port=$((RANDOM + 10001)) train.py
+# python -m torch.distributed.launch --nproc_per_node=$GPUS \
+#         --master_port=$((RANDOM + 10001)) train.py
