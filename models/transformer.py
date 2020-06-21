@@ -54,7 +54,7 @@ class Transformer(nn.Module):
         query_embed = query_embed.unsqueeze(1).repeat(1, bs, 1)
         mask = mask.flatten(1)
         if ref_hs is not None:
-            tgt = ref_hs.permute([1,0,2])
+            tgt = ref_hs
         else:
             tgt = torch.zeros_like(query_embed)
         memory = self.encoder(src, src_key_padding_mask=mask, pos=pos_embed)

@@ -239,9 +239,9 @@ def main(cfg):
 
         load_state_dict(model_without_ddp, checkpoint['state_dict'])
 
-        if not cfg.eval and 'optimizer' in checkpoint \
-            and 'lr_scheduler' in checkpoint and 'epoch' in checkpoint:
-            optimizer.load_state_dict(checkpoint['optimizer'])
+        # if not cfg.eval and 'optimizer' in checkpoint \
+        #     and 'lr_scheduler' in checkpoint and 'epoch' in checkpoint:
+        #     optimizer.load_state_dict(checkpoint['optimizer'])
             # load_state_dict(lr_scheduler, checkpoint['lr_scheduler'])
             # cfg.start_epoch = checkpoint['epoch'] + 1
 
