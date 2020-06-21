@@ -1,17 +1,21 @@
-from pyson.utils import memoize
-import numpy as np
 import os.path as osp
 import random
+
 import mmcv
-from mmdet.datasets.custom import CustomDataset
-from datasets.extra_aug import ExtraAugmentation
-from .transforms import (ImageTransform, BboxTransform, MaskTransform,
-                         Numpy2Tensor)
-from pycocotools.ytvos import YTVOS
-from mmcv.parallel import DataContainer as DC
-from .utils import to_tensor, random_scale
-from mmdet.datasets import DATASETS
+import numpy as np
 import torch
+from mmcv.parallel import DataContainer as DC
+from pycocotools.ytvos import YTVOS
+
+from datasets.extra_aug import ExtraAugmentation
+from mmdet.datasets import DATASETS, build_dataloader, build_dataset
+from mmdet.datasets.custom import CustomDataset
+from pyson.utils import memoize
+
+from .transforms import (BboxTransform, ImageTransform, MaskTransform,
+                         Numpy2Tensor)
+from .utils import random_scale, to_tensor
+
 
 @DATASETS.register_module()
 class YTVOSDataset(CustomDataset):
@@ -119,15 +123,12 @@ class YTVOSDataset(CustomDataset):
             return self.prepare_test_img(self.img_ids[idx])
         data = self.prepare_train_img(self.img_ids[idx])
         return data
+
     def load_annotations(self, ann_file):
-        @memoize
         def f():
             ytvos = YTVOS(ann_file)
             cat_ids = ytvos.getCatIds()
-            cat2label = {
-                cat_id: i + 1
-                for i, cat_id in enumerate(cat_ids)
-            }
+            cat2label = {cat_id: i + 1 for i, cat_id in enumerate(cat_ids)}
             vid_ids = ytvos.getVidIds()
             vid_infos = []
             for i in vid_ids:
@@ -210,7 +211,7 @@ class YTVOSDataset(CustomDataset):
         ref_img = mmcv.imread(
             osp.join(self.img_prefix, vid_info['filenames'][ref_frame_id]))
         # load proposals if necessary
-        if self.proposals is not None: # default is None
+        if self.proposals is not None:  # default is None
             proposals = self.proposals[idx][:self.num_max_proposals]
             # TODO: Handle empty proposals properly. Currently images with
             # no proposals are just ignored, but they can be used for
@@ -295,8 +296,7 @@ class YTVOSDataset(CustomDataset):
                     img_meta=DC(img_meta, cpu_only=True),
                     gt_bboxes=DC(to_tensor(gt_bboxes)),
                     ref_bboxes=DC(to_tensor(ref_bboxes)),
-                    ref_labels=DC(to_tensor(ref_labels))
-                )
+                    ref_labels=DC(to_tensor(ref_labels)))
         if self.proposals is not None:
             data['proposals'] = DC(to_tensor(proposals))
         if self.with_label:
@@ -440,65 +440,50 @@ class YTVOSDataset(CustomDataset):
         return ann
 
 
-
-
-
 class DETRWraper_YTVOSDataset(torch.utils.data.Dataset):
     def __init__(self, dataset):
         if isinstance(dataset, torch.utils.data.Dataset):
             self.dataset = dataset
         else:
             self.dataset = build_dataset(dataset)
+        if hasattr(self.dataset, 'flag'):
+            self.flag = self.dataset.flag
+            
 
-        self.flag = self.dataset.flag
     def __len__(self):
         return len(self.dataset)
 
     def __getitem__(self, idx):
         item = self.dataset.__getitem__(idx)
         meta = 'img_meta'
-        h,w,_ = item[meta].data['pad_shape']
-        scale = torch.Tensor([w,h,w,h])
+        h, w, _ = item[meta].data['pad_shape']
+        scale = torch.Tensor([w, h, w, h])
 
         target = dict(
             boxes=item['gt_bboxes'].data / scale,
             labels=item['gt_labels'].data,
             orig_size=item[meta].data['ori_shape'],
-            size=(h,w),
+            size=(h, w),
             iscrowd=False,
         )
-        
+
         ref_target = dict(
             boxes=item['ref_bboxes'].data / scale,
             labels=item['ref_labels'].data,
             orig_size=item[meta].data['ori_shape'],
-            size=(h,w),
+            size=(h, w),
             iscrowd=False,
         )
-        
+
         target[meta] = item[meta]
         item['target'] = DC(target)
         item['ref_target'] = DC(ref_target)
         return item
 
-
-def build():
-    from mmdet.datasets import build_dataset, build_dataloader
-    @memoize
-    def get_train_dataset():
-        cfg_data = mmcv.Config.fromfile('./configs/datasets/ytvos_tracking.py')
-        dataset_train = build_dataset(cfg_data.data['train'])
-        return dataset_train
-
-    ds = get_train_dataset()
-    cfg_data = mmcv.Config.fromfile('./configs/datasets/ytvos_tracking.py')
-    dataset_train = DETRWraper_YTVOSDataset(ds)
-    data_loader_train = build_dataloader(
-                    dataset_train,
-                    cfg_data.data['imgs_per_gpu'],
-                    cfg_data.data['workers_per_gpu'],
-                    num_gpus=1,
-                    dist=False,
-                    seed=1)
-    print('FInish build dataloader YTVOS')
-    return data_loader_train
+@memoize
+def build(image_set, cfg_data):
+    dataset_train = build_dataset(cfg_data[image_set])
+    if image_set == 'train':
+        dataset_train = DETRWraper_YTVOSDataset(dataset_train)
+    print('Finish build dataloader YTVOS', dataset_train)
+    return dataset_train

@@ -368,7 +368,7 @@ def is_main_process():
 def save_on_master(*args, **kwargs):
     if is_main_process():
         torch.save(*args, **kwargs)
-
+        print("-->>", args[1])
 
 def init_distributed_mode(args):
     if 'RANK' in os.environ and 'WORLD_SIZE' in os.environ:

@@ -19,24 +19,16 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
                     device: torch.device, epoch: int, max_norm: float = 0,writer=None):
     model.train()
     criterion.train()
-    metric_logger = utils.MetricLogger(delimiter="  ")
-    metric_logger.add_meter('lr', utils.SmoothedValue(window_size=1, fmt='{value:.6f}'))
-    metric_logger.add_meter('class_error', utils.SmoothedValue(window_size=1, fmt='{value:.2f}'))
-    header = 'Epoch: [{}]'.format(epoch)
+    # metric_logger = utils.MetricLogger(delimiter="  ")
+    # metric_logger.add_meter('lr', utils.SmoothedValue(window_size=1, fmt='{value:.6f}'))
+    # metric_logger.add_meter('class_error', utils.SmoothedValue(window_size=1, fmt='{value:.2f}'))
     print_freq = 10
     # for data in metric_logger.log_every(data_loader, print_freq, header):
     for i, data in tqdm(enumerate(data_loader), total=len(data_loader)):
         n_iter = i+len(data_loader)*epoch
-        # samples = samples.to(device)
-        # targets = [{k: v.to(device) for k, v in t.items() if isinstance(v, torch.Tensor)} for t in targets]
-        # import pdb; pdb.set_trace()
 
         outputs = model(data['img'])
-        if False:
-            ref_outputs = model(data['ref_img'])
-        else:
-            ref_outputs = None
-
+        ref_outputs = model(data['ref_img'])
         targets = data['target'].data[0]
         ref_targets = data['ref_target'].data[0]
         for i, target in enumerate(targets):
@@ -54,41 +46,30 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
             ref_targets=ref_targets)
 
         weight_dict = criterion.weight_dict
-        losses = sum(loss_dict[k] * weight_dict[k] for k in loss_dict.keys() if k in weight_dict)
+        weited_losses_dict = {}
 
-        # reduce losses over all GPUs for logging purposes
-        loss_dict_reduced = utils.reduce_dict(loss_dict)
-        loss_dict_reduced_unscaled = {f'{k}_unscaled': v
-                                      for k, v in loss_dict_reduced.items()}
-        loss_dict_reduced_scaled = {k: v * weight_dict[k]
-                                    for k, v in loss_dict_reduced.items() if k in weight_dict}
-        losses_reduced_scaled = sum(loss_dict_reduced_scaled.values())
+        for k in loss_dict.keys():
+            if 'loss' in k:
+                weight = weight_dict[k]
+                weited_losses_dict[k] = loss_dict[k] * weight
 
-        loss_value = losses_reduced_scaled.item()
-
-        if not math.isfinite(loss_value):
-            print("Loss is {}, stopping training".format(loss_value))
-            print(loss_dict_reduced)
-            sys.exit(1)
-
+        losses = sum(weited_losses_dict.values())
         optimizer.zero_grad()
         losses.backward()
         if max_norm > 0:
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm)
         optimizer.step()
-        
-        # metric_logger.update(loss=loss_value, **loss_dict_reduced_scaled, **loss_dict_reduced_unscaled)
-        # metric_logger.update(class_error=loss_dict_reduced['class_error'])
-        # metric_logger.update(lr=optimizer.param_groups[0]["lr"])
-        if writer is not None:
-            for k, v in loss_dict_reduced_scaled.items():
+        log_dict = weited_losses_dict.copy()
+        log_dict['matching_acc'] = loss_dict['matching_acc']
+        if writer is not None and n_iter % print_freq == 0:
+            for k, v in log_dict.items():
                 writer.add_scalar(f'Loss/{k}', v, n_iter)
 
 
     # gather the stats from all processes
-    metric_logger.synchronize_between_processes()
-    print("Averaged stats:", metric_logger)
-    return {k: meter.global_avg for k, meter in metric_logger.meters.items()}
+    # metric_logger.synchronize_between_processes()
+    # print("Averaged stats:", metric_logger)
+    # return {k: meter.global_avg for k, meter in metric_logger.meters.items()}
 
 
 @torch.no_grad()

@@ -120,6 +120,7 @@ class SetCriterion(nn.Module):
         self.eos_coef = eos_coef
         self.losses = losses
         self.cos_loss = torch.nn.CosineEmbeddingLoss()
+        self.cosine_similarity = torch.nn.CosineSimilarity()
         empty_weight = torch.ones(self.num_classes + 1)
         empty_weight[-1] = self.eos_coef
         self.register_buffer('empty_weight', empty_weight)
@@ -173,6 +174,7 @@ class SetCriterion(nn.Module):
                         targets.append(1)
                     else:
                         targets.append(-1)
+            # import ipdb; ipdb.set_trace()
             if len(cur_inputs) > 0:
                 cur_inputs_list.append(torch.stack(cur_inputs))
                 ref_inputs_list.append(torch.stack(ref_inputs))
@@ -182,8 +184,13 @@ class SetCriterion(nn.Module):
         cur_inputs_list = torch.cat(cur_inputs_list)
         ref_inputs_list = torch.cat(ref_inputs_list)
         targets_list = torch.cat(targets_list).to(ref_inputs_list.device)
-        loss = self.cos_loss(cur_inputs_list, ref_inputs_list, targets_list)
-        return loss
+        norm_cur_inputs = F.normalize(cur_inputs_list)
+        norm_ref_inputs = F.normalize(ref_inputs_list)
+        loss = self.cos_loss(norm_cur_inputs,norm_ref_inputs, targets_list)
+        
+        pred = self.cosine_similarity(norm_cur_inputs,norm_ref_inputs)
+        acc = (pred > 0.85) == (targets_list>0)
+        return {'loss_object_matching':loss, 'matching_acc': acc.float().mean().item()}
 
 
 
@@ -302,14 +309,14 @@ class SetCriterion(nn.Module):
         # if with matching loss
         # embed_outputs = outputs['outputs_ident'][layer]
         # ref_embed_outputs = ref_outputs['ref_outputs_ident'][layer]
-        if False:
-            ref_outputs = kwargs['ref_outputs']
-            pids = kwargs['pids']
-            ref_targets = kwargs['ref_targets']
+        # if False:
+        ref_outputs = kwargs['ref_outputs']
+        pids = kwargs['pids']
+        ref_targets = kwargs['ref_targets']
 
-            ref_outputs_without_aux = {k: v for k, v in ref_outputs.items() if k != 'aux_outputs'}
-            ref_indices = self.matcher(ref_outputs_without_aux, ref_targets)
-            losses['object_matching'] = self.loss_object_matching(outputs, cur_indices, ref_outputs, ref_indices, pids)
+        ref_outputs_without_aux = {k: v for k, v in ref_outputs.items() if k != 'aux_outputs'}
+        ref_indices = self.matcher(ref_outputs_without_aux, ref_targets)
+        losses.update(self.loss_object_matching(outputs, cur_indices, ref_outputs, ref_indices, pids))
 
         # In case of auxiliary losses, we repeat this process with the output of each intermediate layer.
         if 'aux_outputs' in outputs:
@@ -402,11 +409,8 @@ def build(args):
     if args.masks:
         model = DETRsegm(model, freeze_detr=(args.frozen_weights is not None))
     matcher = build_matcher(args)
-    weight_dict = {'loss_ce': 1, 'loss_bbox': args.bbox_loss_coef}
-    weight_dict['loss_giou'] = args.giou_loss_coef
-    if args.masks:
-        weight_dict["loss_mask"] = args.mask_loss_coef
-        weight_dict["loss_dice"] = args.dice_loss_coef
+    weight_dict = args.weight_dict
+
     # TODO this is a hack
     if args.aux_loss:
         aux_weight_dict = {}
