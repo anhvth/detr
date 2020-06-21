@@ -22,7 +22,7 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
     # metric_logger = utils.MetricLogger(delimiter="  ")
     # metric_logger.add_meter('lr', utils.SmoothedValue(window_size=1, fmt='{value:.6f}'))
     # metric_logger.add_meter('class_error', utils.SmoothedValue(window_size=1, fmt='{value:.2f}'))
-    print_freq = 3
+    print_freq = 10
     # for data in metric_logger.log_every(data_loader, print_freq, header):
     for i, data in tqdm(enumerate(data_loader), total=len(data_loader)):
         global_iter += 1
@@ -55,14 +55,7 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
                 if k in ref_loss_dict:
                     weited_losses_dict["ref_"+k] = ref_loss_dict[k] * weight
 
-        log_dict = weited_losses_dict.copy()
-        for k, v in loss_dict.items():
-            if not k in log_dict:
-                log_dict[k] = v
 
-        for k, v in ref_loss_dict.items():
-            if not k in log_dict:
-                log_dict["ref_"+k] = v
 
 
         losses = sum(weited_losses_dict.values())
@@ -72,6 +65,15 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm)
         optimizer.step()
         if writer is not None and global_iter % print_freq == 0:
+            log_dict = weited_losses_dict.copy()
+            for k, v in loss_dict.items():
+                if not k in log_dict:
+                    log_dict[k] = v
+
+            for k, v in ref_loss_dict.items():
+                if not k in log_dict:
+                    log_dict["ref_"+k] = v
+                    
             for k, v in log_dict.items():
                 writer.add_scalar(f'Loss/{k}', v, global_iter)
     return model, global_iter
