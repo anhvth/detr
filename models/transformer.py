@@ -44,21 +44,25 @@ class Transformer(nn.Module):
             if p.dim() > 1:
                 nn.init.xavier_uniform_(p)
 
-    def forward(self, src, mask, query_embed, pos_embed):
+    def forward(self, src, mask, query_embed, pos_embed, ref_hs):
         # flatten NxCxHxW to HWxNxC
-        bs, c, h, w = src.shape
+        # ref_embed = ref_embed[-1]
+
+        bs, ch, h, w = src.shape
         src = src.flatten(2).permute(2, 0, 1)
         pos_embed = pos_embed.flatten(2).permute(2, 0, 1)
         query_embed = query_embed.unsqueeze(1).repeat(1, bs, 1)
         mask = mask.flatten(1)
-
-        tgt = torch.zeros_like(query_embed)
+        if ref_hs is not None:
+            tgt = ref_hs.permute([1,0,2])
+        else:
+            tgt = torch.zeros_like(query_embed)
         memory = self.encoder(src, src_key_padding_mask=mask, pos=pos_embed)
 
-        hs = self.decoder(tgt, memory, memory_key_padding_mask=mask,
+        before_norm_hs, hs = self.decoder(tgt, memory, memory_key_padding_mask=mask,
                           pos=pos_embed, query_pos=query_embed)
-        hs = hs.transpose(1, 2), memory.permute(1, 2, 0).view(bs, c, h, w)
-        return hs
+
+        return before_norm_hs, hs.transpose(1, 2), memory.permute(1, 2, 0).view(bs, ch, h, w)
 
 
 class TransformerEncoder(nn.Module):
@@ -79,8 +83,8 @@ class TransformerEncoder(nn.Module):
             output = layer(output, src_mask=mask,
                            src_key_padding_mask=src_key_padding_mask, pos=pos)
         if self.norm is not None:
+            # before_norm_output = output
             output = self.norm(output)
-
         return output
 
 
@@ -113,15 +117,21 @@ class TransformerDecoder(nn.Module):
             if self.return_intermediate:
                 intermediate.append(self.norm(output))
 
+            
+        # else:
+        #     return output, output
+        before_norm_output = output
         if self.norm is not None:
+
             output = self.norm(output)
             if self.return_intermediate:
                 intermediate.pop()
                 intermediate.append(output)
-
+            
         if self.return_intermediate:
-            return torch.stack(intermediate)
-        return output
+            return before_norm_output, torch.stack(intermediate)
+        
+        return before_norm_output, output
 
 
 class TransformerEncoderLayer(nn.Module):

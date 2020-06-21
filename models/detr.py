@@ -47,7 +47,7 @@ class DETR(nn.Module):
 
         
 
-    def forward(self, samples: NestedTensor):
+    def forward(self, samples: NestedTensor, ref_embed=None):
         """ The forward expects a NestedTensor, which consists of:
                - samples.tensor: batched images, of shape [batch_size x 3 x H x W]
                - samples.mask: a binary mask of shape [batch_size x H x W], containing 1 on padded pixels
@@ -62,6 +62,9 @@ class DETR(nn.Module):
                - "aux_outputs": Optional, only returned when auxilary losses are activated. It is a list of
                                 dictionnaries containing the two above keys for each decoder layer.
         """
+        # if ref_embed is not None:
+            # import pdb; pdb.set_trace()
+            
         if not isinstance(samples, NestedTensor):
             samples = nested_tensor_from_tensor_list(samples)
         features, pos = self.backbone(samples)
@@ -70,15 +73,17 @@ class DETR(nn.Module):
         assert mask is not None
         src, mask, query_embed, pos_embed = self.input_proj(src), mask, self.query_embed.weight, pos[-1]
         
-        hs = self.transformer(src, mask, query_embed, pos_embed)[0]
+        before_norm_hs, hs, _ = self.transformer(src, mask, query_embed, pos_embed, ref_embed)
+        
+        # import pdb; pdb.set_trace()
 
         outputs_class = self.class_embed(hs)
         outputs_coord = self.bbox_embed(hs).sigmoid()
 
         outputs_ident = self.reident_embed(hs)
-        import pdb; pdb.set_trace()
+        # import pdb; pdb.set_trace()
 
-        out = {'pred_logits': outputs_class[-1], 'pred_boxes': outputs_coord[-1], 'outputs_ident':outputs_ident}
+        out = {'pred_logits': outputs_class[-1], 'pred_boxes': outputs_coord[-1], 'outputs_ident':outputs_ident, 'hs':before_norm_hs}
         if self.aux_loss:
             out['aux_outputs'] = self._set_aux_loss(outputs_class, outputs_coord)
         return out
@@ -94,9 +99,13 @@ class DETR(nn.Module):
 
 class MMDETR(DETR):
     
-    def forward(self, samples: DC):
+    def forward(self, samples: DC, ref_samples: DC):
         samples = [_ for _ in samples.data]
-        return super(MMDETR, self).forward(samples)
+        ref_out = super(MMDETR, self).forward(ref_samples)
+
+        out = super(MMDETR, self).forward(ref_samples, ref_out['hs'])
+
+        return out, ref_out
         
 
 
@@ -312,13 +321,14 @@ class SetCriterion(nn.Module):
         # embed_outputs = outputs['outputs_ident'][layer]
         # ref_embed_outputs = ref_outputs['ref_outputs_ident'][layer]
         # if False:
-        ref_outputs = kwargs['ref_outputs']
-        pids = kwargs['pids']
-        ref_targets = kwargs['ref_targets']
+        if 'ref_outputs' in kwargs:
+            ref_outputs = kwargs['ref_outputs']
+            pids = kwargs['pids']
+            ref_targets = kwargs['ref_targets']
 
-        ref_outputs_without_aux = {k: v for k, v in ref_outputs.items() if k != 'aux_outputs'}
-        ref_indices = self.matcher(ref_outputs_without_aux, ref_targets)
-        losses.update(self.loss_object_matching(outputs, cur_indices, ref_outputs, ref_indices, pids))
+            ref_outputs_without_aux = {k: v for k, v in ref_outputs.items() if k != 'aux_outputs'}
+            ref_indices = self.matcher(ref_outputs_without_aux, ref_targets)
+            losses.update(self.loss_object_matching(outputs, cur_indices, ref_outputs, ref_indices, pids))
 
         # In case of auxiliary losses, we repeat this process with the output of each intermediate layer.
         if 'aux_outputs' in outputs:

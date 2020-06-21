@@ -26,8 +26,7 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
     # for data in metric_logger.log_every(data_loader, print_freq, header):
     for i, data in tqdm(enumerate(data_loader), total=len(data_loader)):
         global_iter += 1
-        outputs = model(data['img'])
-        ref_outputs = model(data['ref_img'])
+        outputs, ref_outputs = model(data['img'] ,data['ref_img'])
         targets = data['target'].data[0]
         ref_targets = data['ref_target'].data[0]
         for i, target in enumerate(targets):
@@ -44,6 +43,8 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
             pids=pids,
             ref_targets=ref_targets)
 
+
+        ref_loss_dict = criterion(ref_outputs, ref_targets)
         weight_dict = criterion.weight_dict
         weited_losses_dict = {}
 
@@ -51,6 +52,8 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
             if 'loss' in k:
                 weight = weight_dict[k]
                 weited_losses_dict[k] = loss_dict[k] * weight
+                if k in ref_loss_dict:
+                    weited_losses_dict["ref_"+k] = ref_loss_dict[k] * weight
 
         losses = sum(weited_losses_dict.values())
         optimizer.zero_grad()

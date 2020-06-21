@@ -2,8 +2,8 @@ import mmcv
 lr = 0.0001
 lr_backbone = 1e-05
 weight_decay = 0.0001
-epochs = 20
-lr_drop = 10
+epochs = 10
+lr_drop = 5
 clip_max_norm = 0.1
 frozen_weights = None
 backbone = 'resnet50'
@@ -30,7 +30,8 @@ coco_panoptic_path = None
 remove_difficult = False
 device = 'cuda'
 seed = 42
-resume = 'https=//dl.fbaipublicfiles.com/detr/detr-r50-e632da11.pth'
+# resume = 'https=//dl.fbaipublicfiles.com/detr/detr-r50-e632da11.pth'
+resume='/checkpoints/haianh/detr/ytvos/pretrained_e10.pth'
 start_epoch = 0
 eval = False
 num_workers = 2
@@ -38,8 +39,8 @@ world_size = 1
 # dist_url= 'env=/
 num_classes = 41
 is_mm_model = True
-output_dir = '/checkpoints/haianh/detr/ytvos/'
-tb_logdir = '/checkpoints/haianh/detr/ytvos/tensorboard/'
+output_dir = '/checkpoints/haianh/detr/ytvos/before_norm_hs'
+tb_logdir = f'{output_dir}tensorboard/'
 
 weight_dict = {
     'loss_ce': 1,
@@ -59,7 +60,7 @@ data = mmcv.Config.fromfile('configs/datasets/ytvos_tracking.py').data
 checkpoint_freq = 1
 gpu_ids = range(2)
 
-debug=True
+debug=1
 if debug:
     launcher = "none"
     data['train']['num_images'] = 10

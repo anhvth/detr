@@ -224,7 +224,7 @@ def main(cfg):
 
     if cfg.frozen_weights is not None:
         checkpoint = torch.load(cfg.frozen_weights, map_location='cpu')
-        model_without_ddp.detr.load_state_dict(checkpoint['model'])
+        model_without_ddp.detr.load_state_dict(checkpoint['state_dict'])
 
     output_dir = Path(cfg.output_dir)
     if cfg.resume:
@@ -237,12 +237,13 @@ def main(cfg):
         from mmcv.runner import load_state_dict
         # model_without_ddp.load_state_dict(checkpoint['model'], strict=False)
 
-        load_state_dict(model_without_ddp, checkpoint['model'])
+        load_state_dict(model_without_ddp, checkpoint['state_dict'])
 
-        if not cfg.eval and 'optimizer' in checkpoint and 'lr_scheduler' in checkpoint and 'epoch' in checkpoint:
+        if not cfg.eval and 'optimizer' in checkpoint \
+            and 'lr_scheduler' in checkpoint and 'epoch' in checkpoint:
             optimizer.load_state_dict(checkpoint['optimizer'])
-            load_state_dict(lr_scheduler, checkpoint['lr_scheduler'])
-            cfg.start_epoch = checkpoint['epoch'] + 1
+            # load_state_dict(lr_scheduler, checkpoint['lr_scheduler'])
+            # cfg.start_epoch = checkpoint['epoch'] + 1
 
     print("Start training")
     start_time = time.time()
