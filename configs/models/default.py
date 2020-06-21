@@ -1,4 +1,5 @@
 import mmcv
+import os
 lr = 0.0001
 lr_backbone = 1e-05
 weight_decay = 0.0001
@@ -39,8 +40,8 @@ world_size = 1
 # dist_url= 'env=/
 num_classes = 41
 is_mm_model = True
-output_dir = '/checkpoints/haianh/detr/ytvos/before_norm_hs'
-tb_logdir = f'{output_dir}tensorboard/'
+output_dir = '/checkpoints/haianh/detr/ytvos/before_norm_hs/'
+tb_logdir = os.path.join(output_dir, 'tensorboard/')
 
 weight_dict = {
     'loss_ce': 1,
@@ -60,7 +61,7 @@ data = mmcv.Config.fromfile('configs/datasets/ytvos_tracking.py').data
 checkpoint_freq = 1
 gpu_ids = range(2)
 
-debug=1
+debug=0
 if debug:
     launcher = "none"
     data['train']['num_images'] = 10

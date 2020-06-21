@@ -47,7 +47,7 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
         ref_loss_dict = criterion(ref_outputs, ref_targets)
         weight_dict = criterion.weight_dict
         weited_losses_dict = {}
-
+        
         for k in loss_dict.keys():
             if 'loss' in k:
                 weight = weight_dict[k]
@@ -55,14 +55,22 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
                 if k in ref_loss_dict:
                     weited_losses_dict["ref_"+k] = ref_loss_dict[k] * weight
 
+        log_dict = weited_losses_dict.copy()
+        for k, v in loss_dict.items():
+            if not k in log_dict:
+                log_dict[k] = v
+
+        for k, v in ref_loss_dict.items():
+            if not k in log_dict:
+                log_dict["ref_"+k] = v
+
+
         losses = sum(weited_losses_dict.values())
         optimizer.zero_grad()
         losses.backward()
         if max_norm > 0:
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm)
         optimizer.step()
-        log_dict = weited_losses_dict.copy()
-        log_dict['matching_acc'] = loss_dict['matching_acc']
         if writer is not None and global_iter % print_freq == 0:
             for k, v in log_dict.items():
                 writer.add_scalar(f'Loss/{k}', v, global_iter)
