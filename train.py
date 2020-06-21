@@ -25,7 +25,7 @@ from pyson.utils import memoize
 
 # os.environ['LOCAL_RANK'] = str(0)
 # os.environ['RANK'] = str(0)
-# def get_args_parser():
+# def get_cfg_parser():
 #     parser = argparse.ArgumentParser('Set transformer detector',
 #                                      add_help=False)
 #     parser.add_argument('--lr', default=1e-4, type=float)
@@ -169,31 +169,31 @@ from pyson.utils import memoize
 #     return parser
 
 
-def main(args):
+def main(cfg):
 
-    # utils.init_distributed_mode(args)
+    # utils.init_distributed_mode(cfg)
     # import ipdb; ipdb.set_trace()
-    if args.launcher == 'none':
+    if cfg.launcher == 'none':
         distributed = False
     else:
         distributed = True
-        init_dist(args.launcher, **args.dist_params)
+        init_dist(cfg.launcher, **cfg.dist_params)
 
     # print("git:\n  {}\n".format(utils.get_sha()))
 
-    if args.frozen_weights is not None:
-        assert args.masks, "Frozen training is meant for segmentation only"
-    print(args)
+    if cfg.frozen_weights is not None:
+        assert cfg.masks, "Frozen training is meant for segmentation only"
+    print(cfg)
 
-    device = torch.device(args.device)
+    device = torch.device(cfg.device)
 
     # fix the seed for reproducibility
-    seed = args.seed + utils.get_rank()
+    seed = cfg.seed + utils.get_rank()
     torch.manual_seed(seed)
     np.random.seed(seed)
     random.seed(seed)
 
-    model, criterion, postprocessors = build_model(args)
+    model, criterion, postprocessors = build_model(cfg)
 
     model_without_ddp = model
 
@@ -214,35 +214,35 @@ def main(args):
                 if "backbone" in n and p.requires_grad
             ],
             "lr":
-            args.lr_backbone,
+            cfg.lr_backbone,
         },
     ]
     optimizer = torch.optim.AdamW(param_dicts,
-                                  lr=args.lr,
-                                  weight_decay=args.weight_decay)
-    lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, args.lr_drop)
+                                  lr=cfg.lr,
+                                  weight_decay=cfg.weight_decay)
+    lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, cfg.lr_drop)
 
-    if args.frozen_weights is not None:
-        checkpoint = torch.load(args.frozen_weights, map_location='cpu')
+    if cfg.frozen_weights is not None:
+        checkpoint = torch.load(cfg.frozen_weights, map_location='cpu')
         model_without_ddp.detr.load_state_dict(checkpoint['model'])
 
-    output_dir = Path(args.output_dir)
-    if args.resume:
-        if args.resume.startswith('https'):
-            checkpoint = torch.hub.load_state_dict_from_url(args.resume,
+    output_dir = Path(cfg.output_dir)
+    if cfg.resume:
+        if cfg.resume.startswith('https'):
+            checkpoint = torch.hub.load_state_dict_from_url(cfg.resume,
                                                             map_location='cpu',
                                                             check_hash=True)
         else:
-            checkpoint = torch.load(args.resume, map_location='cpu')
+            checkpoint = torch.load(cfg.resume, map_location='cpu')
         from mmcv.runner import load_state_dict
         # model_without_ddp.load_state_dict(checkpoint['model'], strict=False)
 
         load_state_dict(model_without_ddp, checkpoint['model'])
 
-        if not args.eval and 'optimizer' in checkpoint and 'lr_scheduler' in checkpoint and 'epoch' in checkpoint:
+        if not cfg.eval and 'optimizer' in checkpoint and 'lr_scheduler' in checkpoint and 'epoch' in checkpoint:
             optimizer.load_state_dict(checkpoint['optimizer'])
             load_state_dict(lr_scheduler, checkpoint['lr_scheduler'])
-            args.start_epoch = checkpoint['epoch'] + 1
+            cfg.start_epoch = checkpoint['epoch'] + 1
 
     print("Start training")
     start_time = time.time()
@@ -251,7 +251,7 @@ def main(args):
     # put model on gpus
 
     if distributed:
-        find_unused_parameters = args.get('find_unused_parameters', False)
+        find_unused_parameters = cfg.get('find_unused_parameters', False)
         model = MMDistributedDataParallel(
             model.cuda(),
             device_ids=[torch.cuda.current_device()],
@@ -259,46 +259,47 @@ def main(args):
             find_unused_parameters=find_unused_parameters)
 
     else:
-        model = MMDataParallel(model.cuda(args.gpu_ids[0]),
-                               device_ids=args.gpu_ids)
+        model = MMDataParallel(model.cuda(cfg.gpu_ids[0]),
+                               device_ids=cfg.gpu_ids)
     rank, _ = get_dist_info()
 
-    dataset_train = build_dataset(image_set='train', args=args)
+    dataset_train = build_dataset(image_set='train', cfg=cfg)
     data_loader_train = build_dataloader(dataset_train,
-                                         args.data['imgs_per_gpu'],
-                                         args.data['workers_per_gpu'],
-                                         num_gpus=torch.cuda.device_count(),
+                                         cfg.data['imgs_per_gpu'],
+                                         cfg.data['workers_per_gpu'],
+                                         num_gpus=torch.cuda.device_count() if distributed else 1,
                                          dist=distributed,
                                          seed=1)
 
-    args.tb_logdir = f'{args.tb_logdir}/{rank}'
-    writer = SummaryWriter(args.tb_logdir)
-    os.system(f'rm -r {args.tb_logdir}')
-    os.makedirs(args.tb_logdir, exist_ok=True)
-    print(f'Tensorboard: tensorboard --logdir {args.tb_logdir}')
+    cfg.tb_logdir = f'{cfg.tb_logdir}/{rank}'
+    writer = SummaryWriter(cfg.tb_logdir)
+    os.system(f'rm -r {cfg.tb_logdir}')
+    os.makedirs(cfg.tb_logdir, exist_ok=True)
+    print(f'Tensorboard: tensorboard --logdir {cfg.tb_logdir}')
     # print(rank, type(rank))
-    for epoch in range(args.start_epoch, args.epochs):
-        train_stats = train_one_epoch(model,
+    global_iter = 0
+    for epoch in range(cfg.start_epoch, cfg.epochs):
+        model, global_iter = train_one_epoch(model,
                                       criterion,
                                       data_loader_train,
                                       optimizer,
                                       device,
                                       epoch,
-                                      args.clip_max_norm,
-                                      writer=writer)
+                                      cfg.clip_max_norm,
+                                      writer=writer,
+                                      global_iter=global_iter)
         lr_scheduler.step()
-        if args.output_dir:
+        if cfg.output_dir:
             checkpoint_paths = [output_dir / 'checkpoint.pth']
             # extra checkpoint before LR drop and every 100 epochs
-            if (epoch + 1) % args.lr_drop == 0 or (
-                    epoch + 1) % args.checkpoint_freq == 0:
+            if (epoch + 1) % cfg.lr_drop == 0 or (
+                    epoch + 1) % cfg.checkpoint_freq == 0:
                 checkpoint_paths.append(output_dir /
                                         f'checkpoint{epoch:04}.pth')
             for checkpoint_path in checkpoint_paths:
                 utils.save_on_master(
                     {
-                        # 'model': model.module.state_dict(),
-                        'model': model_without_ddp.state_dict(),
+                        'state_dict': model.module.state_dict(),
                         'optimizer': optimizer.state_dict(),
                         'lr_scheduler': lr_scheduler.state_dict(),
                         'epoch': epoch,
@@ -312,8 +313,8 @@ def main(args):
 
 
 if __name__ == '__main__':
-    # parser = argparse.ArgumentParser('DETR training and evaluation script', parents=[get_args_parser()])
-    args = mmcv.Config.fromfile('./configs/models/default.py')
-    if args.output_dir:
-        Path(args.output_dir).mkdir(parents=True, exist_ok=True)
-    main(args)
+    # parser = argparse.ArgumentParser('DETR training and evaluation script', parents=[get_cfg_parser()])
+    cfg = mmcv.Config.fromfile('./configs/models/default.py')
+    if cfg.output_dir:
+        Path(cfg.output_dir).mkdir(parents=True, exist_ok=True)
+    main(cfg)

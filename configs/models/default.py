@@ -28,7 +28,6 @@ dataset_file = 'ytvos'
 coco_path = '/data/coco'
 coco_panoptic_path = None
 remove_difficult = False
-output_dir = '/checkpoints/haianh/detr/ytvos/'
 device = 'cuda'
 seed = 42
 resume = 'https=//dl.fbaipublicfiles.com/detr/detr-r50-e632da11.pth'
@@ -39,7 +38,8 @@ world_size = 1
 # dist_url= 'env=/
 num_classes = 41
 is_mm_model = True
-tb_logdir = '/checkpoints/haianh/detr/ytvos/tensorboard'
+output_dir = '/checkpoints/haianh/detr/ytvos/'
+tb_logdir = '/checkpoints/haianh/detr/ytvos/tensorboard/'
 
 weight_dict = {
     'loss_ce': 1,
@@ -53,6 +53,24 @@ weight_dict = {
 
 dist_params = dict(backend='nccl')
 launcher = "pytorch"
+# launcher = 'none'
 
 data = mmcv.Config.fromfile('configs/datasets/ytvos_tracking.py').data
 checkpoint_freq = 1
+gpu_ids = range(2)
+
+debug=True
+if debug:
+    launcher = "none"
+    data['train']['num_images'] = 10
+    ds_train = data['train']
+    data['train'] = dict(
+        type='RepeatDataset',
+        times=100,
+        dataset=ds_train,
+    )
+
+    data['test'] = ds_train
+    data['test']['flip_ratio'] = 0
+    output_dir += '/debug'
+    tb_logdir += '/debug'

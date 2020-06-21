@@ -16,17 +16,16 @@ from tqdm import tqdm
 
 def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
                     data_loader: Iterable, optimizer: torch.optim.Optimizer,
-                    device: torch.device, epoch: int, max_norm: float = 0,writer=None):
+                    device: torch.device, epoch: int, max_norm: float = 0,writer=None, global_iter=None):
     model.train()
     criterion.train()
     # metric_logger = utils.MetricLogger(delimiter="  ")
     # metric_logger.add_meter('lr', utils.SmoothedValue(window_size=1, fmt='{value:.6f}'))
     # metric_logger.add_meter('class_error', utils.SmoothedValue(window_size=1, fmt='{value:.2f}'))
-    print_freq = 10
+    print_freq = 3
     # for data in metric_logger.log_every(data_loader, print_freq, header):
     for i, data in tqdm(enumerate(data_loader), total=len(data_loader)):
-        n_iter = i+len(data_loader)*epoch
-
+        global_iter += 1
         outputs = model(data['img'])
         ref_outputs = model(data['ref_img'])
         targets = data['target'].data[0]
@@ -61,10 +60,10 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
         optimizer.step()
         log_dict = weited_losses_dict.copy()
         log_dict['matching_acc'] = loss_dict['matching_acc']
-        if writer is not None and n_iter % print_freq == 0:
+        if writer is not None and global_iter % print_freq == 0:
             for k, v in log_dict.items():
-                writer.add_scalar(f'Loss/{k}', v, n_iter)
-
+                writer.add_scalar(f'Loss/{k}', v, global_iter)
+    return model, global_iter
 
     # gather the stats from all processes
     # metric_logger.synchronize_between_processes()

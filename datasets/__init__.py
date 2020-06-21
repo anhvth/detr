@@ -20,15 +20,15 @@ def get_coco_api_from_dataset(dataset):
         return dataset.coco
 
 @timeit
-def build_dataset(image_set, args):
-    if args.dataset_file == 'coco':
-        return build_coco(image_set, args)
-    if args.dataset_file == 'coco_panoptic':
+def build_dataset(image_set, cfg):
+    if cfg.dataset_file == 'coco':
+        return build_coco(image_set, cfg)
+    if cfg.dataset_file == 'coco_panoptic':
         # to avoid making panopticapi required for coco
         from .coco_panoptic import build as build_coco_panoptic
-        return build_coco_panoptic(image_set, args)
-    if args.dataset_file == 'ytvos':
-        print(f'Building {image_set}\n {args.data}')
-        return build_ytvos(image_set, args.data)
+        return build_coco_panoptic(image_set, cfg)
+    if cfg.dataset_file == 'ytvos':
+        print(f'Building {image_set}\n {cfg.data}')
+        return build_ytvos(image_set, cfg.data)
     
-    raise ValueError(f'dataset {args.dataset_file} not supported')
+    raise ValueError(f'dataset {cfg.dataset_file} not supported')

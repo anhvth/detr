@@ -6,6 +6,7 @@ import numpy as np
 import torch
 from mmcv.parallel import DataContainer as DC
 from pycocotools.ytvos import YTVOS
+from util.box_ops import box_xyxy_to_cxcywh
 
 from datasets.extra_aug import ExtraAugmentation
 from mmdet.datasets import DATASETS, build_dataloader, build_dataset
@@ -43,7 +44,8 @@ class YTVOSDataset(CustomDataset):
                  extra_aug=None,
                  aug_ref_bbox_param=None,
                  resize_keep_ratio=True,
-                 test_mode=False):
+                 test_mode=False,
+                 num_images=None):
         # prefix of images path
         self.img_prefix = img_prefix
 
@@ -67,6 +69,9 @@ class YTVOSDataset(CustomDataset):
 
             self.img_ids = [self.img_ids[i] for i in valid_inds]
 
+
+        if num_images is not None:
+            self.img_ids = self.img_ids[:num_images]
         # (long_edge, short_edge) or [(long1, short1), (long2, short2), ...]
         self.img_scales = img_scale if isinstance(img_scale,
                                                   list) else [img_scale]
@@ -442,10 +447,10 @@ class YTVOSDataset(CustomDataset):
 
 class DETRWraper_YTVOSDataset(torch.utils.data.Dataset):
     def __init__(self, dataset):
-        if isinstance(dataset, torch.utils.data.Dataset):
-            self.dataset = dataset
-        else:
+        if isinstance(dataset, dict):
             self.dataset = build_dataset(dataset)
+        else:
+            self.dataset = dataset
         if hasattr(self.dataset, 'flag'):
             self.flag = self.dataset.flag
             
@@ -460,7 +465,7 @@ class DETRWraper_YTVOSDataset(torch.utils.data.Dataset):
         scale = torch.Tensor([w, h, w, h])
 
         target = dict(
-            boxes=item['gt_bboxes'].data / scale,
+            boxes=box_xyxy_to_cxcywh(item['gt_bboxes'].data)/ scale,
             labels=item['gt_labels'].data,
             orig_size=item[meta].data['ori_shape'],
             size=(h, w),
@@ -468,7 +473,7 @@ class DETRWraper_YTVOSDataset(torch.utils.data.Dataset):
         )
 
         ref_target = dict(
-            boxes=item['ref_bboxes'].data / scale,
+            boxes=box_xyxy_to_cxcywh(item['ref_bboxes'].data)/ scale,
             labels=item['ref_labels'].data,
             orig_size=item[meta].data['ori_shape'],
             size=(h, w),
