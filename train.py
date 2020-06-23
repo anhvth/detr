@@ -23,6 +23,7 @@ from mmdet.datasets import build_dataloader
 from models import build_model
 from pyson.utils import memoize
 
+
 # os.environ['LOCAL_RANK'] = str(0)
 # os.environ['RANK'] = str(0)
 # def get_cfg_parser():
@@ -170,7 +171,6 @@ from pyson.utils import memoize
 
 
 def main(cfg):
-
     # utils.init_distributed_mode(cfg)
     # import ipdb; ipdb.set_trace()
     if cfg.launcher == 'none':
@@ -214,7 +214,7 @@ def main(cfg):
                 if "backbone" in n and p.requires_grad
             ],
             "lr":
-            cfg.lr_backbone,
+                cfg.lr_backbone,
         },
     ]
     optimizer = torch.optim.AdamW(param_dicts,
@@ -242,8 +242,8 @@ def main(cfg):
         # if not cfg.eval and 'optimizer' in checkpoint \
         #     and 'lr_scheduler' in checkpoint and 'epoch' in checkpoint:
         #     optimizer.load_state_dict(checkpoint['optimizer'])
-            # load_state_dict(lr_scheduler, checkpoint['lr_scheduler'])
-            # cfg.start_epoch = checkpoint['epoch'] + 1
+        # load_state_dict(lr_scheduler, checkpoint['lr_scheduler'])
+        # cfg.start_epoch = checkpoint['epoch'] + 1
 
     print("Start training")
     start_time = time.time()
@@ -281,14 +281,14 @@ def main(cfg):
     global_iter = 0
     for epoch in range(cfg.start_epoch, cfg.epochs):
         model, global_iter = train_one_epoch(model,
-                                      criterion,
-                                      data_loader_train,
-                                      optimizer,
-                                      device,
-                                      epoch,
-                                      cfg.clip_max_norm,
-                                      writer=writer,
-                                      global_iter=global_iter)
+                                             criterion,
+                                             data_loader_train,
+                                             optimizer,
+                                             device,
+                                             epoch,
+                                             cfg.clip_max_norm,
+                                             writer=writer,
+                                             global_iter=global_iter)
         lr_scheduler.step()
         if cfg.output_dir:
             checkpoint_paths = [output_dir / 'checkpoint.pth']
@@ -306,7 +306,6 @@ def main(cfg):
                         'epoch': epoch,
                     },
                     checkpoint_path)
-                
 
     total_time = time.time() - start_time
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))

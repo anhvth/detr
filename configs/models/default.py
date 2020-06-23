@@ -1,7 +1,6 @@
 import mmcv
 import os
 lr = 0.0001
-lr_backbone = 1e-05
 weight_decay = 0.0001
 epochs = 10
 lr_drop = 5
@@ -18,7 +17,7 @@ dropout = 0.1
 nheads = 8
 num_queries = 100
 pre_norm = False
-masks = False
+
 aux_loss = True
 set_cost_class = 1
 set_cost_bbox = 5
@@ -60,6 +59,16 @@ launcher = "pytorch"
 data = mmcv.Config.fromfile('configs/datasets/ytvos_tracking.py').data
 checkpoint_freq = 1
 gpu_ids = range(2)
+
+
+
+
+model=dict(
+    backbone=dict(
+        lr=1e-05,
+        masks = False,
+    )
+)
 
 debug=0
 if debug:
